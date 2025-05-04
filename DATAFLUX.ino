@@ -12,22 +12,13 @@
 #include "DATAFLUX.h"
 
 void onReceive(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
-    if (len != sizeof(message)) {
+    if (len != 1) {
         Serial.println("Received invalid message size");
         return;
     }
 
-    message msg;
-    memcpy(&msg, data, sizeof(msg));
-
     Serial.print("ID: ");
-    Serial.print(msg.id);
-    Serial.print(" | x: ");
-    Serial.print(msg.x);
-    Serial.print(" | y: ");
-    Serial.print(msg.y);
-    Serial.print(" | z: ");
-    Serial.println(msg.z);
+    Serial.print(*data);
 }
 
 void setup() {
