@@ -30,15 +30,10 @@ void handleError(uint8_t errorCode) {
     }
 }
 
-void deepSleep(uint32_t durationms) {
-    esp_sleep_enable_timer_wakeup(durationms * 1000LL);
-    esp_deep_sleep_start();
-}
-
 void initEspNow() {
     if (esp_now_init() != ESP_OK) {
         handleError(1);
-        deepSleep(ERRORSLEEPDURATIONMS);
+        //deepSleep(ERRORSLEEPDURATIONMS);
     }
 }
 
