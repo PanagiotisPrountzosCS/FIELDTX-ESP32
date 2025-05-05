@@ -4,43 +4,61 @@
  *
  */
 
+#include <WiFi.h>
+#include <esp_now.h>
+
 #include "DATAFLUX.h"
-#include "modules/ALSMD/ALSMD.h"
 
-// anything else here
+LSM303 sensor(true, false);
+uint8_t masterMAC[] = {0x54, 0x32, 0x04, 0x3d, 0x5c, 0xf4};
+uint32_t selfID = 0;
+bool ESPNOWNeedsInit = true;
+bool sensorIsInactive = true;
 
-#include "esp_sleep.h"
+fvec3 magReading;
+message msg;
 
-RTC_DATA_ATTR LSM303 sensor(true, false);
-RTC_DATA_ATTR bool firstBoot = true;
+esp_now_peer_info_t masterInfo;
 
 void setup() {
-    auto start = millis();
     Serial.begin(115200);
-    Wire.begin();
+    initSlave();
 
-    fvec3 magReading;
-    if (firstBoot) {
-        sensor.configure(ACCEL_RATE_0HZ, MAG_RATE_3HZ, ACCEL_MODE_POWERDOWN, MAG_MODE_CONTINUOUS,
-                         ACCEL_SCALE_2G, MAG_SCALE_8_1);
-        sensor.init();
-        Serial.println("Initialized sensor");
-        firstBoot = false;
+    msg.id = selfID;
+
+    while (ESPNOWNeedsInit) {
+        ESPNOWNeedsInit = !initESPNOW(masterInfo, masterMAC);
+        if (ESPNOWNeedsInit)
+            indicateError(ESP_NOW_INIT_ERROR);
+        else
+            break;
     }
 
+    while (sensorIsInactive) {
+        sensorIsInactive = !initSensor(sensor);
+        if (sensorIsInactive)
+            indicateError(SENSOR_INIT_ERROR);
+        else
+            break;
+    }
+}
+
+void loop() {
+    if (!sensor.checkI2CCommunication()) {
+        indicateError(SENSOR_I2C_ERROR);
+        return;
+    }
     sensor.readMag(magReading);
-    // this should be the ble advertisement part of all this!
+
+    msg.x = magReading.x;
+    msg.y = magReading.y;
+    msg.z = magReading.z;
+
+    publishMessage(&msg, masterMAC);
     Serial.println(magReading.x);
     Serial.println(magReading.y);
     Serial.println(magReading.z);
 
-    auto end = millis();
-    Serial.print("Deep sleeping for 1 second, after running for ");
-    Serial.print(end - start);
-    Serial.println(" milliseconds!");
-
-    esp_sleep_enable_timer_wakeup(1'000'000);  // 1 second
-    esp_deep_sleep_start();
+    // sleep
+    deepSleep(1000);
 }
-
-void loop() {}
