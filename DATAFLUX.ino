@@ -9,53 +9,56 @@
 
 #include "DATAFLUX.h"
 
-// Receiver MAC address
-uint8_t masterMAC[] = {0x54, 0x32, 0x04, 0x3D, 0x5C, 0xF4};
+LSM303 sensor(true, false);
+uint8_t masterMAC[] = {0x54, 0x32, 0x04, 0x3d, 0x5c, 0xf4};
+uint32_t selfID = 4;
+bool ESPNOWNeedsInit = true;
+bool sensorIsInactive = true;
 
-RTC_DATA_ATTR LSM303 sensor(true, false);
-RTC_DATA_ATTR bool shouldInitLSM = true;
-RTC_DATA_ATTR esp_now_peer_info_t masterInfo{};
-RTC_DATA_ATTR fvec3 magData;
-RTC_DATA_ATTR message slaveMessage;
+fvec3 magReading;
+message msg;
+
+esp_now_peer_info_t masterInfo;
 
 void setup() {
-    // initializations
-    setCpuFrequencyMhz(80);
-    Wire.begin();
-    WiFi.mode(WIFI_STA);
+    Serial.begin(115200);
+    initSlave();
 
-    // setup esp_now
-    initEspNow(&masterInfo, masterMAC);
+    msg.id = selfID;
 
-    // setup LSM303
-    if (shouldInitLSM) {
-        initLSM(&sensor);
-        shouldInitLSM = false;
+    while (ESPNOWNeedsInit) {
+        ESPNOWNeedsInit = !initESPNOW(masterInfo, masterMAC);
+        if (ESPNOWNeedsInit)
+            indicateError(ESP_NOW_INIT_ERROR);
+        else
+            break;
     }
 
-    // validate I2C communication
-    if(!sensor.checkI2CCommunication()){
-        shouldInitLSM = true;
-        handleError(LSM_COMMUNICATION_FAIL);
-        deepSleep(ERRORSLEEPDURATIONMS);
+    while (sensorIsInactive) {
+        sensorIsInactive = !initSensor(sensor);
+        if (sensorIsInactive)
+            indicateError(SENSOR_INIT_ERROR);
+        else
+            break;
     }
-
-    // make measurement
-
-    sensor.readMag(magData);
-
-    // package it
-
-    slaveMessage = package(magData);
-
-    // transmit it
-
-    transmitMessage(&slaveMessage, masterMAC);
-
-    // deepsleep, until next iteration
-    deepSleep(NORMALSLEEPDURATIONMS);
 }
 
 void loop() {
-    // Should not reach here
+    if (!sensor.checkI2CCommunication()) {
+        indicateError(SENSOR_I2C_ERROR);
+        return;
+    }
+    sensor.readMag(magReading);
+
+    msg.x = magReading.x;
+    msg.y = magReading.y;
+    msg.z = magReading.z;
+
+    publishMessage(&msg, masterMAC);
+    Serial.println(magReading.x);
+    Serial.println(magReading.y);
+    Serial.println(magReading.z);
+
+    // sleep
+    deepSleep(1000);
 }
